@@ -46,7 +46,7 @@ from node_manager_fkie.history import History
 from node_manager_fkie.master_view_proxy import LaunchArgsSelectionRequest
 from node_manager_fkie.name_resolution import NameResolution
 from node_manager_fkie.progress_queue import InteractionNeededError
-from node_manager_fkie.screen_handler import ScreenHandler, ScreenSelectionRequest
+from node_manager_fkie.screen_handler import ScreenHandler, ScreenSelectionRequest, NoScreenOpenLogRequest
 from node_manager_fkie.settings import Settings
 from node_manager_fkie.ssh_handler import SSHhandler, AuthenticationRequest
 from node_manager_fkie.start_handler import StartException, AdvRunCfg
@@ -58,8 +58,8 @@ PKG_NAME = 'node_manager_fkie'
 __author__ = "Alexander Tiderko (Alexander.Tiderko@fkie.fraunhofer.de)"
 __copyright__ = "Copyright (c) 2012 Alexander Tiderko, Fraunhofer FKIE/US"
 __license__ = "BSD"
-__version__ = "0.7.8"  # git describe --tags --dirty --always
-__date__ = "2018-03-24"  # git log -1 --date=iso
+__version__ = "0.8.0"  # git describe --tags --dirty --always
+__date__ = "2018-07-16"  # git log -1 --date=iso
 
 # PYTHONVER = (2, 7, 1)
 # if sys.version_info < PYTHONVER:
