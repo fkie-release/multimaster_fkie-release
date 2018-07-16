@@ -121,6 +121,7 @@ class Settings(object):
     LAUNCH_VIEW_EXT = ['.yaml', '.conf', '.cfg', '.iface', '.nmprofile', '.sync', '.test']
 
     STORE_GEOMETRY = True
+    MOVABLE_DOCK_WIDGETS = True
     AUTOUPDATE = True
     MAX_TIMEDIFF = 0.5
 
@@ -128,6 +129,7 @@ class Settings(object):
     CONFIRM_EXIT_WHEN_CLOSING = True
     HIGHLIGHT_XML_BLOCKS = True
     COLORIZE_HOSTS = True
+    CHECK_FOR_NODELETS_AT_START = True
 
     SHOW_DOMAIN_SUFFIX = False
 
@@ -177,6 +179,7 @@ class Settings(object):
         self._respawn_script = self.RESPAWN_SCRIPT
         self._launch_view_file_ext = self.str2list(settings.value('launch_view_file_ext', ', '.join(self.LAUNCH_VIEW_EXT)))
         self._store_geometry = self.str2bool(settings.value('store_geometry', self.STORE_GEOMETRY))
+        self._movable_dock_widgets = self.str2bool(settings.value('movable_dock_widgets', self.MOVABLE_DOCK_WIDGETS))
         self.SEARCH_IN_EXT = list(set(self.SEARCH_IN_EXT) | set(self._launch_view_file_ext))
         self._autoupdate = self.str2bool(settings.value('autoupdate', self.AUTOUPDATE))
         self._max_timediff = float(settings.value('max_timediff', self.MAX_TIMEDIFF))
@@ -190,6 +193,7 @@ class Settings(object):
         self._confirm_exit_when_closing = self.str2bool(settings.value('confirm_exit_when_closing', self.CONFIRM_EXIT_WHEN_CLOSING))
         self._highlight_xml_blocks = self.str2bool(settings.value('highlight_xml_blocks', self.HIGHLIGHT_XML_BLOCKS))
         self._colorize_hosts = self.str2bool(settings.value('colorize_hosts', self.COLORIZE_HOSTS))
+        self._check_for_nodelets_at_start = self.str2bool(settings.value('check_for_nodelets_at_start', self.CHECK_FOR_NODELETS_AT_START))
         self._show_domain_suffix = self.str2bool(settings.value('show_domain_suffix', self.SHOW_DOMAIN_SUFFIX))
         self._transpose_pub_sub_descr = self.str2bool(settings.value('transpose_pub_sub_descr', self.TRANSPOSE_PUB_SUB_DESCR))
         settings.beginGroup('host_colors')
@@ -337,6 +341,18 @@ class Settings(object):
             settings.setValue('store_geometry', self._store_geometry)
 
     @property
+    def movable_dock_widgets(self):
+        return self._movable_dock_widgets
+
+    @movable_dock_widgets.setter
+    def movable_dock_widgets(self, value):
+        v = self.str2bool(value)
+        if self._movable_dock_widgets != v:
+            self._movable_dock_widgets = v
+            settings = self.qsettings(self.CFG_FILE)
+            settings.setValue('movable_dock_widgets', self._movable_dock_widgets)
+
+    @property
     def autoupdate(self):
         return self._autoupdate
 
@@ -422,6 +438,19 @@ class Settings(object):
             self._colorize_hosts = val
             settings = self.qsettings(self.CFG_FILE)
             settings.setValue('colorize_hosts', self._colorize_hosts)
+
+    @property
+    def check_for_nodelets_at_start(self):
+        return self._check_for_nodelets_at_start
+
+    @check_for_nodelets_at_start.setter
+    def check_for_nodelets_at_start(self, value):
+        val = self.str2bool(value)
+        if self._check_for_nodelets_at_start != val:
+            self._check_for_nodelets_at_start = val
+            print self._check_for_nodelets_at_start
+            settings = self.qsettings(self.CFG_FILE)
+            settings.setValue('check_for_nodelets_at_start', self._check_for_nodelets_at_start)
 
     @property
     def show_domain_suffix(self):
@@ -648,5 +677,5 @@ class Settings(object):
             QColor(233, 224, 210).rgb(),
             QColor(236, 236, 231).rgb(),
             QColor(43, 43, 44).rgb(),
-            QColor(121, 123, 122)
+            QColor(121, 123, 122).rgb()
         ]
