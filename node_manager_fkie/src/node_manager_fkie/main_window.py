@@ -119,7 +119,8 @@ class MainWindow(QMainWindow):
         self._history_selected_robot = ''
         self.__icons = {'empty': (QIcon(), ''),
                         'default_pc': (QIcon(':/icons/crystal_clear_miscellaneous.png'), ':/icons/crystal_clear_miscellaneous.png'),
-                        'log_warning': (QIcon(':/icons/crystal_clear_warning.png'), ':/icons/crystal_clear_warning.png')
+                        'log_warning': (QIcon(':/icons/crystal_clear_no_io.png'), ':/icons/crystal_clear_no_io.png'),
+                        'show_io': (QIcon(':/icons/crystal_clear_show_io.png'), ':/icons/crystal_clear_show_io.png')
                         }  # (masnter name : (QIcon, path))
         self.__current_icon = None
         self.__current_master_label_name = None
@@ -136,6 +137,7 @@ class MainWindow(QMainWindow):
         ui_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'MainWindow.ui')
         loadUi(ui_file, self)
         self.setObjectName('MainUI')
+        self.setDockOptions(QMainWindow.AllowNestedDocks | QMainWindow.AllowTabbedDocks | QMainWindow.AnimatedDocks | QMainWindow.VerticalTabs)
         self.user_frame.setVisible(False)
         self._add_user_to_combo(getpass.getuser())
         self.userComboBox.editTextChanged.connect(self.on_user_changed)
@@ -160,13 +162,14 @@ class MainWindow(QMainWindow):
         self.settings_dock = SettingsWidget(self)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.settings_dock)
         # setup logger widget
-        self.log_dock = LogWidget(self)
+        self.log_dock = LogWidget()
         self.log_dock.added_signal.connect(self._on_log_added)
         self.log_dock.cleared_signal.connect(self._on_log_cleared)
+        self.log_dock.setVisible(False)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.log_dock)
         self.logButton.clicked.connect(self._on_log_button_clicked)
         # setup the launch files view
-        self.launch_dock = LaunchFilesWidget(self)
+        self.launch_dock = LaunchFilesWidget()
         self.launch_dock.load_signal.connect(self.on_load_launch_file)
         self.launch_dock.load_profile_signal.connect(self.profiler.on_load_profile_file)
         self.launch_dock.load_as_default_signal.connect(self.on_load_launch_as_default)
@@ -306,6 +309,14 @@ class MainWindow(QMainWindow):
             self.on_hide_docks_toggled(True)
         self.hideDocksButton.clicked.connect(self.on_hide_docks_toggled)
 
+        if not nm.settings().movable_dock_widgets:
+            self.networkDock.setFeatures(self.networkDock.NoDockWidgetFeatures)
+            self.launch_dock.setFeatures(self.launch_dock.NoDockWidgetFeatures)
+            self.descriptionDock.setFeatures(self.descriptionDock.NoDockWidgetFeatures)
+            self.settings_dock.setFeatures(self.settings_dock.NoDockWidgetFeatures)
+            self.helpDock.setFeatures(self.helpDock.NoDockWidgetFeatures)
+            self.log_dock.setFeatures(self.log_dock.NoDockWidgetFeatures)
+
         # =============================
         # Initialize the update handler
         # =============================
@@ -364,9 +375,9 @@ class MainWindow(QMainWindow):
         self.logButton.setEnabled(True)
 
     def _on_log_cleared(self):
-        self.logButton.setIcon(self.__icons['log_warning'][0])
+        self.logButton.setIcon(self.__icons['show_io'][0])
         self.logButton.setText('')
-        self.logButton.setEnabled(False)
+        # self.logButton.setEnabled(False)
 
     def on_hide_docks_toggled(self, checked):
         if self.dockWidgetArea(self.launch_dock) == Qt.LeftDockWidgetArea:
@@ -424,7 +435,8 @@ class MainWindow(QMainWindow):
             res = SelectDialog.getValue('Stop nodes?', "Select masters where to stop:",
                                         masters, False, False, '', self,
                                         select_if_single=False,
-                                        checkitem1="don't show this dialog again")
+                                        checkitem1="don't show this dialog again",
+                                        closein=3)
             masters2stop, self._close_on_exit = res[0], res[1]
             nm.settings().confirm_exit_when_closing = not res[2]
             if self._close_on_exit:
@@ -1311,7 +1323,7 @@ class MainWindow(QMainWindow):
         self.masternameLabel.setEnabled(online)
         self.masterInfoFrame.setEnabled((timestamp is not None))
         # update warning symbol / text
-        if self.logButton.isEnabled():
+        if not self.log_dock.isVisible() and self.log_dock.count():
             if self.logButton.text():
                 self.logButton.setIcon(self.__icons['log_warning'][0])
                 self.logButton.setText('')
@@ -1624,10 +1636,6 @@ class MainWindow(QMainWindow):
         :param path: the path of the launch file.
         :type path: str
         '''
-        if argv:
-            rospy.loginfo("LOAD launch: %s with args: %s" % (path, argv))
-        else:
-            rospy.loginfo("LOAD launch: %s" % path)
         master_proxy = None
         if masteruri is not None:
             master_proxy = self.getMaster(masteruri, False)
@@ -1726,9 +1734,9 @@ class MainWindow(QMainWindow):
                 last_path = files[-1]
                 try:
                     self.editor_dialogs[path].on_load_request(last_path, search_text)
-                    self.editor_dialogs[path].raise_()
+                    self.editor_dialogs[path].restore()
                     self.editor_dialogs[path].activateWindow()
-                except:
+                except Exception:
                     if trynr > 1:
                         raise
                     del self.editor_dialogs[path]
@@ -1825,7 +1833,7 @@ class MainWindow(QMainWindow):
         '''
         if self.isActiveWindow():
             self._changed_binaries[changed] = affected
-            self._check_for_changed_files()
+            self._check_for_changed_binaries()
         else:
             self._changed_binaries[changed] = affected
 
@@ -1833,30 +1841,11 @@ class MainWindow(QMainWindow):
         '''
         Check the dictinary with changed files and notify the masters about changes.
         '''
-        new_affected = list()
-        for _, affected in self._changed_files.items():  # :=changed
+        for changed, affected in self._changed_files.items():  # :=changed
             for (muri, lfile) in affected:
-                if not (muri, lfile) in self.__in_question:
-                    self.__in_question.add((muri, lfile))
-                    new_affected.append((muri, lfile))
-        # if there are no question to reload the launch file -> ask
-        if new_affected:
-            choices = dict()
-            for (muri, lfile) in new_affected:
                 master = self.getMaster(muri)
-                if master is not None and master.online:
-                    master.launchfile = lfile
-                    choices[''.join([os.path.basename(lfile), ' [', master.mastername, ']'])] = (master, lfile)
-            if choices:
-                cfgs, _ = SelectDialog.getValue('Reload configurations?',
-                                                '<b>%s</b> was changed.<br>Select affected configurations to reload:' % ', '.join([os.path.basename(f) for f in self._changed_files.keys()]), choices.keys(),
-                                                False, True,
-                                                ':/icons/crystal_clear_launch_file.png',
-                                                self)
-                for c in cfgs:
-                    choices[c][0].launchfiles = choices[c][1]
-            for (muri, lfile) in new_affected:
-                self.__in_question.remove((muri, lfile))
+                if master is not None:
+                    master.question_reload_changed_file(changed, lfile)
         self._changed_files.clear()
 
     def _check_for_changed_binaries(self):
@@ -1874,7 +1863,7 @@ class MainWindow(QMainWindow):
             choices = dict()
             for (nname, muri, lfile) in new_affected:
                 master = self.getMaster(muri)
-                if master is not None:
+                if master is not None and master.online:
                     master_nodes = master.getNode(nname)
                     if master_nodes and master_nodes[0].is_running():
                         choices[nname] = (master, lfile)
@@ -1903,7 +1892,6 @@ class MainWindow(QMainWindow):
         @type affected: list
         '''
         # create a list of launch files and masters, which are affected by the changed file
-        # and are not currently in question
         if self.isActiveWindow():
             self._changed_files_param[changed] = affected
             self._check_for_changed_files_param()
@@ -1914,35 +1902,11 @@ class MainWindow(QMainWindow):
         '''
         Check the dictinary with changed files and notify about the transfer of changed file.
         '''
-        new_affected = list()
         for changed, affected in self._changed_files_param.items():
             for (muri, lfile) in affected:
-                if not (muri, changed) in self.__in_question:
-                    self.__in_question.add((muri, changed))
-                    new_affected.append((muri, changed))
-        # if there are no question to reload the launch file -> ask
-        if new_affected:
-            choices = dict()
-            for (muri, lfile) in new_affected:
                 master = self.getMaster(muri)
                 if master is not None:
-                    master.launchfile = lfile
-                    choices[''.join([os.path.basename(lfile), ' [', master.mastername, ']'])] = (master, lfile)
-            cfgs, _ = SelectDialog.getValue('Transfer configurations?',
-                                            'Configuration files referenced by parameter are changed.<br>Select affected configurations for copy to remote host: (don\'t forget to restart the nodes!)',
-                                            choices.keys(), False, True,
-                                            ':/icons/crystal_clear_launch_file_transfer.png',
-                                            self)
-            for (muri, lfile) in new_affected:
-                self.__in_question.remove((muri, lfile))
-            for c in cfgs:
-                host = '%s' % get_hostname(choices[c][0].masteruri)
-                username = choices[c][0].current_user
-                self.launch_dock.progress_queue.add2queue(utf8(uuid.uuid4()),
-                                                          'transfer files to %s' % host,
-                                                          nm.starter().transfer_files,
-                                                          (host, choices[c][1], False, username))
-            self.launch_dock.progress_queue.start()
+                    master.question_transfer_changed_file(changed, lfile)
         self._changed_files_param.clear()
 
     def changeEvent(self, event):
