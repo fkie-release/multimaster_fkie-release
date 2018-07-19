@@ -1,3 +1,32 @@
+## multimaster_fkie (melodic) - 0.8.0-0
+
+The packages in the `multimaster_fkie` repository were released into the `melodic` distro by running `/usr/bin/bloom-release multimaster_fkie --track melodic --rosdistro melodic` on `Thu, 19 Jul 2018 17:38:52 -0000`
+
+These packages were released:
+- `default_cfg_fkie`
+- `master_discovery_fkie`
+- `master_sync_fkie`
+- `multimaster_fkie`
+- `multimaster_msgs_fkie`
+- `node_manager_fkie`
+
+Version of package(s) in repository `multimaster_fkie`:
+
+- upstream repository: http://github.com/fkie/multimaster_fkie.git
+- release repository: unknown
+- rosdistro version: `null`
+- old version: `null`
+- new version: `0.8.0-0`
+
+Versions of tools used:
+
+- bloom version: `0.6.6`
+- catkin_pkg version: `0.4.1`
+- rosdep version: `0.11.8`
+- rosdistro version: `0.6.6`
+- vcstools version: `0.1.40`
+
+
 ## multimaster_fkie (kinetic) - 0.8.0-0
 
 The packages in the `multimaster_fkie` repository were released into the `kinetic` distro by running `/usr/bin/bloom-release multimaster_fkie --track kinetic --rosdistro kinetic` on `Mon, 16 Jul 2018 16:33:09 -0000`
