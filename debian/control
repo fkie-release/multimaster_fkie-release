@@ -1,0 +1,13 @@
+Source: ros-kinetic-multimaster-fkie
+Section: misc
+Priority: extra
+Maintainer: Alexander Tiderko <alexander.tiderko@gmail.com>
+Build-Depends: debhelper (>= 9.0.0), ros-kinetic-catkin
+Homepage: http://ros.org/wiki/multimaster_fkie
+Standards-Version: 3.9.2
+
+Package: ros-kinetic-multimaster-fkie
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-kinetic-default-cfg-fkie, ros-kinetic-master-discovery-fkie, ros-kinetic-master-sync-fkie, ros-kinetic-multimaster-msgs-fkie, ros-kinetic-node-manager-fkie
+Description: The metapackage to combine the nodes required to establish and manage a multimaster network.
+ This requires no or minimal configuration. The changes are automatically detected and synchronized.
