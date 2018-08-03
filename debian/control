@@ -1,0 +1,13 @@
+Source: ros-melodic-multimaster-fkie
+Section: misc
+Priority: extra
+Maintainer: Alexander Tiderko <alexander.tiderko@gmail.com>
+Build-Depends: debhelper (>= 9.0.0), ros-melodic-catkin
+Homepage: http://ros.org/wiki/multimaster_fkie
+Standards-Version: 3.9.2
+
+Package: ros-melodic-multimaster-fkie
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-melodic-default-cfg-fkie, ros-melodic-master-discovery-fkie, ros-melodic-master-sync-fkie, ros-melodic-multimaster-msgs-fkie, ros-melodic-node-manager-fkie
+Description: The metapackage to combine the nodes required to establish and manage a multimaster network.
+ This requires no or minimal configuration. The changes are automatically detected and synchronized.
