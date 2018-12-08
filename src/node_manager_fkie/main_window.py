@@ -436,7 +436,7 @@ class MainWindow(QMainWindow):
                                         masters, False, False, '', self,
                                         select_if_single=False,
                                         checkitem1="don't show this dialog again",
-                                        closein=3)
+                                        closein=nm.settings().timeout_close_dialog)
             masters2stop, self._close_on_exit = res[0], res[1]
             nm.settings().confirm_exit_when_closing = not res[2]
             if self._close_on_exit:
@@ -813,18 +813,21 @@ class MainWindow(QMainWindow):
         if self._syncs_to_start:
             if msg.state in [MasterState.STATE_NEW, MasterState.STATE_CHANGED]:
                 # we don't know which name for host was used to start master discovery
-                if host in self._syncs_to_start:
-                    self.on_sync_start(msg.master.uri)
-                    self._syncs_to_start.remove(host)
-                elif msg.master.name in self._syncs_to_start:
-                    self.on_sync_start(msg.master.uri)
-                    self._syncs_to_start.remove(msg.master.name)
-                else:
-                    addresses = nm.nameres().addresses(msg.master.uri)
-                    for address in addresses:
-                        if address in self._syncs_to_start:
-                            self.on_sync_start(msg.master.uri)
-                            self._syncs_to_start.remove(address)
+                try:
+                    if host in self._syncs_to_start:
+                        self.on_sync_start(msg.master.uri)
+                        self._syncs_to_start.remove(host)
+                    elif msg.master.name in self._syncs_to_start:
+                        self.on_sync_start(msg.master.uri)
+                        self._syncs_to_start.remove(msg.master.name)
+                    else:
+                        addresses = nm.nameres().addresses(msg.master.uri)
+                        for address in addresses:
+                            if address in self._syncs_to_start:
+                                self.on_sync_start(msg.master.uri)
+                                self._syncs_to_start.remove(address)
+                except ValueError:
+                    pass
 #      if len(self.masters) == 0:
 #        self._setLocalMonitoring(True)
 
