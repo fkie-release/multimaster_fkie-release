@@ -2,6 +2,14 @@
 Changelog for package master_sync_fkie
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.8.4 (2018-12-08)
+------------------
+
+0.8.3 (2018-12-07)
+------------------
+* install launch dir pull request `#81 <https://github.com/fkie/multimaster_fkie/issues/81>`_ from ahoarau/patch-1
+* Contributors: Alexander Tiderko, Antoine Hoarau
+
 0.8.2 (2018-08-10)
 ------------------
 
