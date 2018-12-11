@@ -1,0 +1,13 @@
+Source: ros-kinetic-master-discovery-fkie
+Section: misc
+Priority: extra
+Maintainer: Alexander Tiderko <alexander.tiderko@gmail.com>
+Build-Depends: debhelper (>= 9.0.0), ros-kinetic-catkin, ros-kinetic-multimaster-msgs-fkie, ros-kinetic-std-srvs
+Homepage: http://ros.org/wiki/master_discovery_fkie
+Standards-Version: 3.9.2
+
+Package: ros-kinetic-master-discovery-fkie
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, avahi-daemon, python-avahi, ros-kinetic-multimaster-msgs-fkie, ros-kinetic-rosgraph, ros-kinetic-roslib, ros-kinetic-rospy, ros-kinetic-std-srvs
+Description: Discover the running ROS Masters in local network.
+ The discovering is done by sending an echo heartbeat messages to a defined multicast group. The alternative is to use a zeroconf/avahi daemon to register the ROS master as service and discover other ROS masters.
