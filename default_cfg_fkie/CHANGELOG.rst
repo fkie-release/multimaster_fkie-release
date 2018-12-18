@@ -2,6 +2,11 @@
 Changelog for package default_cfg_fkie
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.8.7 (2018-12-18)
+------------------
+* fixed changelog format
+* Contributors: Alexander Tiderko
+
 0.8.5 (2018-12-11)
 ------------------
 
@@ -21,7 +26,7 @@ Changelog for package default_cfg_fkie
 ------------------
 
 0.7.8 (2018-03-24)
------------------
+------------------
 
 0.7.7 (2017-10-27)
 ------------------
