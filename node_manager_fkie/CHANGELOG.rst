@@ -2,6 +2,14 @@
 Changelog for package node_manager_fkie
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.8.12 (2019-04-30)
+-------------------
+* fixed lost nodes while grouping
+* Contributors: Alexander Tiderko
+
+0.8.11 (2019-02-27)
+-------------------
+
 0.8.10 (2019-02-26)
 -------------------
 * node_manager_fkie: exapand (nodes, topics, services) on filter
