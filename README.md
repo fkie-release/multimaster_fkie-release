@@ -1,3 +1,32 @@
+## fkie_multimaster (noetic) - 1.2.1-1
+
+The packages in the `fkie_multimaster` repository were released into the `noetic` distro by running `/usr/bin/bloom-release fkie_multimaster --rosdistro noetic` on `Wed, 22 Jul 2020 13:55:24 -0000`
+
+These packages were released:
+- `fkie_master_discovery`
+- `fkie_master_sync`
+- `fkie_multimaster`
+- `fkie_multimaster_msgs`
+- `fkie_node_manager`
+- `fkie_node_manager_daemon`
+
+Version of package(s) in repository `fkie_multimaster`:
+
+- upstream repository: http://github.com/fkie/multimaster_fkie.git
+- release repository: unknown
+- rosdistro version: `null`
+- old version: `null`
+- new version: `1.2.1-1`
+
+Versions of tools used:
+
+- bloom version: `0.9.7`
+- catkin_pkg version: `0.4.22`
+- rosdep version: `0.19.0`
+- rosdistro version: `0.8.2`
+- vcstools version: `0.1.42`
+
+
 ## multimaster_fkie (melodic) - 0.8.12-0
 
 The packages in the `multimaster_fkie` repository were released into the `melodic` distro by running `/usr/bin/bloom-release --rosdistro melodic --track melodic multimaster_fkie` on `Tue, 30 Apr 2019 11:44:12 -0000`
