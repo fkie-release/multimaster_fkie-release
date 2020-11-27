@@ -46,7 +46,7 @@ from fkie_multimaster_msgs.msg import MasterState  # , LinkState, LinkStatesStam
 from fkie_multimaster_msgs.srv import DiscoverMasters, GetSyncInfo, GetSyncInfoResponse
 import rospy
 
-from fkie_master_discovery.common import masteruri_from_master, resolve_url, read_interface, create_pattern, is_empty_pattern
+from fkie_master_discovery.common import masteruri_from_master, resolve_url, read_interface, create_pattern, is_empty_pattern, get_hostname
 from fkie_master_discovery.master_info import MasterInfo
 import fkie_master_discovery.interface_finder as interface_finder
 
@@ -68,7 +68,9 @@ class Main(object):
         '''
         self.masters = {}
         # the connection to the local service master
-        self.materuri = masteruri_from_master()
+        self.masteruri = masteruri_from_master()
+        self.hostname = get_hostname(self.masteruri)
+        self._localname = ''
         '''@ivar: the ROS master URI of the C{local} ROS master. '''
         self.__lock = threading.RLock()
         # load interface
@@ -84,6 +86,7 @@ class Main(object):
         self.__timestamp_local = None
         self.__own_state = None
         self.update_timer = None
+        self.resync_timer = None
         self.own_state_getter = None
         self._timer_update_diagnostics = None
         self._join_threads = dict()  # threads waiting for stopping the sync thread
@@ -110,6 +113,12 @@ class Main(object):
                 elif data.state in [MasterState.STATE_NEW, MasterState.STATE_CHANGED]:
                     m = data.master
                     self.update_master(m.name, m.uri, m.last_change.to_sec(), m.last_change_local.to_sec(), m.discoverer_name, m.monitoruri, m.online)
+
+    def _callback_perform_resync(self):
+        if self.resync_timer is not None:
+            self.resync_timer.cancel()
+        self.resync_timer = threading.Timer(0.1, self._perform_resync)
+        self.resync_timer.start()
 
     def obtain_masters(self):
         '''
@@ -168,7 +177,7 @@ class Main(object):
         '''
         try:
             with self.__lock:
-                if (masteruri != self.materuri):
+                if (masteruri != self.masteruri):
                     if self._can_sync(mastername):
                         # do not sync to the master, if it is in ignore list
                         if self.__resync_on_reconnect and mastername in self.masters:
@@ -178,12 +187,13 @@ class Main(object):
                                     # updates only, if local changes are occured
                                 self.masters[mastername].update(mastername, masteruri, discoverer_name, monitoruri, timestamp_local)
                             else:
-                                self.masters[mastername] = SyncThread(mastername, masteruri, discoverer_name, monitoruri, 0.0, self.__sync_topics_on_demand)
+                                self.masters[mastername] = SyncThread(mastername, masteruri, discoverer_name, monitoruri, 0.0, self.__sync_topics_on_demand, callback_resync=self._callback_perform_resync)
                                 if self.__own_state is not None:
                                     self.masters[mastername].set_own_masterstate(MasterInfo.from_list(self.__own_state))
                                 self.masters[mastername].update(mastername, masteruri, discoverer_name, monitoruri, timestamp_local)
                 elif self.__timestamp_local != timestamp_local:  # self.__sync_topics_on_demand:
                     # get the master info from local discovery master and set it to all sync threads
+                    self._localname = mastername
                     self.own_state_getter = threading.Thread(target=self.get_own_state, args=(monitoruri,))
                     self.own_state_getter.start()
                 if self._timer_update_diagnostics is None or not self._timer_update_diagnostics.is_alive():
@@ -256,6 +266,8 @@ class Main(object):
             rospy.loginfo("  Stop timers...")
             if self.update_timer is not None:
                 self.update_timer.cancel()
+            if self.resync_timer is not None:
+                self.resync_timer.cancel()
             # unregister from update topics
             rospy.loginfo("  Unregister from master discovery...")
             for (_, v) in self.sub_changes.items():
@@ -270,6 +282,12 @@ class Main(object):
             rospy.loginfo("  Wait for ending of %s threads ...", str(len(self._join_threads)))
             time.sleep(1)
         rospy.loginfo("Synchronization is now off")
+
+    def _perform_resync(self):
+        self.resync_timer = None
+        with self.__lock:
+            for (_, s) in self.masters.items():
+                s.perform_resync()
 
     def _rosservice_get_sync_info(self, req):
         '''
@@ -344,28 +362,27 @@ class Main(object):
             level = 1
         if self._current_diagnistic_level != level:
             da = DiagnosticArray()
-            if md5_warnings:
+            if md5_warnings or ttype_warnings:
                 # add warnings for all hosts with topic types with different md5sum
                 for mname, warnings in md5_warnings.items():
                     diag_state = DiagnosticStatus()
                     diag_state.level = level
                     diag_state.name = rospy.get_name()
-                    diag_state.message = "Wrong topics md5sum @%s" % mname
-                    diag_state.hardware_id = mname
+                    diag_state.message = 'Wrong topics md5sum @ %s and %s' % (mname, self._localname)
+                    diag_state.hardware_id = self.hostname
                     for (topicname, _node, _nodeuri), ttype in warnings.items():
                         key = KeyValue()
                         key.key = topicname
                         key.value = ttype
                         diag_state.values.append(key)
                     da.status.append(diag_state)
-            elif ttype_warnings:
                 # add warnings if a topic with different type is synchrinozied to local host
                 for mname, warnings in ttype_warnings.items():
                     diag_state = DiagnosticStatus()
                     diag_state.level = level
                     diag_state.name = rospy.get_name()
-                    diag_state.message = "Wrong topics type @%s" % mname
-                    diag_state.hardware_id = mname
+                    diag_state.message = 'Wrong topics type @ %s and %s' % (mname, self._localname)
+                    diag_state.hardware_id = self.hostname
                     for (topicname, _node, _nodeuri), ttype in warnings.items():
                         key = KeyValue()
                         key.key = topicname
@@ -378,7 +395,7 @@ class Main(object):
                 diag_state.level = 0
                 diag_state.name = rospy.get_name()
                 diag_state.message = ""
-                diag_state.hardware_id = ""
+                diag_state.hardware_id = self.hostname
                 da.status.append(diag_state)
             da.header.stamp = rospy.Time.now()
             self.pub_diag.publish(da)
