@@ -839,6 +839,7 @@ class MainWindow(QMainWindow):
         if msg.state == MasterState.STATE_REMOVED:
             if msg.master.uri == self.getMasteruri():
                 # switch to locale monitoring, if the local master discovering was removed
+                nm.nameres().remove_master_entry(msg.master.uri)
                 self._setLocalMonitoring(True)
             else:
                 nm.nameres().remove_master_entry(msg.master.uri)
@@ -921,9 +922,10 @@ class MainWindow(QMainWindow):
                                     self._subscribe()
                             if self.currentMaster is None and (not self._history_selected_robot or self._history_selected_robot == minfo.mastername):
                                 self.setCurrentMaster(master)
-                                if not hasattr(self, "_sub_extended_log"):
-                                    agg_suffix = '_agg' if nm.settings().use_diagnostics_agg else ''
-                                    self._sub_extended_log = rospy.Subscriber('/diagnostics%s' % agg_suffix, DiagnosticArray, self._callback_diagnostics)
+                                # this info is collected by daemon
+                                # if not hasattr(self, "_sub_extended_log"):
+                                #     agg_suffix = '_agg' if nm.settings().use_diagnostics_agg else ''
+                                #     self._sub_extended_log = rospy.Subscriber('/diagnostics_agg' % agg_suffix, DiagnosticArray, self._callback_diagnostics)
                         # update the list view, whether master is synchronized or not
                         if master.master_info.masteruri == minfo.masteruri:
                             self.master_model.setChecked(master.master_state.name, not minfo.getNodeEndsWith('master_sync') is None)
@@ -966,7 +968,7 @@ class MainWindow(QMainWindow):
             if self._con_tries[masteruri] > 2:
                 self._setLocalMonitoring(True)
         master = self.getMaster(masteruri, False)
-        if master and master.master_state is not None:
+        if master and master.master_state is not None and master.online:
             self._update_handler.requestMasterInfo(master.master_state.uri, master.master_state.monitoruri, self.DELAYED_NEXT_REQ_ON_ERR)
 
     def on_conn_stats_updated(self, stats):
@@ -1151,14 +1153,14 @@ class MainWindow(QMainWindow):
                     params['user'] = self.currentMaster.current_user
                     try:
                         self._progress_queue.add2queue(utf8(uuid.uuid4()),
-                                                       'run `%s` on %s' % (params[2], params[0]),
+                                                       'run `%s` on %s' % (params['binary'], params['host']),
                                                        nm.starter().runNodeWithoutConfig,
                                                        params)
                         self._progress_queue.start()
                     except (Exception, nm.StartException) as e:
-                        rospy.logwarn("Error while run `%s` on %s: %s", params[2], params[0], utf8(e))
+                        rospy.logwarn("Error while run `%s` on %s: %s" % (params['binary'], params['host'], utf8(e)))
                         MessageBox.warning(self, "Run error",
-                                           'Error while run node %s [%s]' % (params[2], params[1]),
+                                           'Error while run node %s [%s]' % (params['binary'], params['package']),
                                            utf8(e))
                 else:
                     MessageBox.critical(self, "Run error",
@@ -1828,7 +1830,7 @@ class MainWindow(QMainWindow):
             if grpc_path in self.editor_dialogs:
                 try:
                     self.editor_dialogs[grpc_path].on_load_request(grpc_path, search_text, only_launch=True)
-                    # self.editor_dialogs[grpc_path].restore()
+                    self.editor_dialogs[grpc_path].raise_()
                     self.editor_dialogs[grpc_path].activateWindow()
                 except Exception:
                     if trynr > 1:
@@ -2059,6 +2061,8 @@ class MainWindow(QMainWindow):
         elif url.toString().startswith('copy-log-path://'):
             if self.currentMaster is not None:
                 self.currentMaster.on_log_path_copy()
+        elif url.toString().startswith('copy://'):
+            QApplication.clipboard().setText(url.toString().replace('copy://', ''))
         elif url.toString().startswith('launch://'):
             self.on_launch_edit(self._url_path(url), '')
         elif url.toString().startswith('reload-globals://'):
