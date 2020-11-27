@@ -32,7 +32,7 @@
 
 
 
-from python_qt_binding.QtCore import QRegExp, Qt, Signal
+from python_qt_binding.QtCore import QRegExp, Qt, Signal, QEvent
 from python_qt_binding.QtGui import QColor, QFont, QKeySequence, QTextCursor, QTextDocument
 import os
 import re
@@ -51,9 +51,9 @@ from .yaml_highlighter import YamlHighlighter
 
 
 try:
-    from python_qt_binding.QtGui import QAction, QApplication, QMenu, QTextEdit
+    from python_qt_binding.QtGui import QAction, QApplication, QMenu, QTextEdit, QToolTip
 except Exception:
-    from python_qt_binding.QtWidgets import QAction, QApplication, QMenu, QTextEdit
+    from python_qt_binding.QtWidgets import QAction, QApplication, QMenu, QTextEdit, QToolTip
 
 
 class TextEdit(QTextEdit):
@@ -318,6 +318,30 @@ class TextEdit(QTextEdit):
                 except Exception as err:
                     MessageBox.critical(self, "Error", "Cannot open launch file %s" % self.filename, utf8(err))
 
+    def _strip_bad_parts(self, textblock, current_position):
+        result = textblock
+        startidx = textblock.rfind('$(find ', 0, current_position)
+        if startidx == -1:
+            startidx = textblock.rfind(' /', 0, current_position)
+        if startidx == -1:
+            startidx = textblock.rfind("'", 0, current_position)
+        if startidx == -1:
+            startidx = textblock.rfind('"', 0, current_position)
+        endidx = textblock.find(' $(find ', current_position)
+        if endidx == -1:
+            endidx = textblock.find(' /', current_position)
+        if endidx == -1:
+            endidx = textblock.find("'", current_position)
+        if endidx == -1:
+            endidx = textblock.find('"', current_position)
+        if startidx > 0 and endidx > 0:
+            result = textblock[startidx:endidx]
+        elif startidx > 0:
+            result = textblock[startidx:]
+        elif endidx > 0:
+            result = textblock[:endidx]
+        return result
+
     def mouseReleaseEvent(self, event):
         '''
         Opens the new editor, if the user clicked on the included file and sets the
@@ -329,7 +353,8 @@ class TextEdit(QTextEdit):
         if event.modifiers() == Qt.ControlModifier or event.modifiers() == Qt.ShiftModifier:
             cursor = self.cursorForPosition(event.pos())
             try:
-                for inc_file in find_included_files(cursor.block().text(), False, False, search_in_ext=[]):
+                textblock = self._strip_bad_parts(cursor.block().text(), cursor.positionInBlock())
+                for inc_file in find_included_files(textblock, False, False, search_in_ext=[]):
                     aval = inc_file.raw_inc_path
                     aitems = aval.split("'")
                     for search_for in aitems:
@@ -804,3 +829,20 @@ class TextEdit(QTextEdit):
         cursor = self.textCursor()
         if not cursor.isNull():
             cursor.insertText(arg.data())
+
+    # ############################################################################
+    # ######### Tooltip                                                     ######
+    # ############################################################################
+
+    def event(self, event):
+        if event.type() == QEvent.ToolTip:
+            cursor = self.cursorForPosition(event.pos())
+            cursor.select(QTextCursor.BlockUnderCursor)
+            if cursor.selectedText():
+                for dp, np in XmlHighlighter.DEPRECATED_PARAMETER.items():
+                    if 'name="%s"' % dp in cursor.selectedText():
+                        QToolTip.showText(event.globalPos(), ' %s is deprecated, use %s' % (dp, np))
+            else:
+                QToolTip.hideText()
+            return True
+        return QTextEdit.event(self, event)
