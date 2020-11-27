@@ -42,6 +42,8 @@ import socket
 import rospy
 from fkie_master_discovery.common import get_hostname
 from fkie_node_manager_daemon.common import utf8
+from fkie_node_manager_daemon.common import isstring
+from fkie_node_manager_daemon import url as nmdurl
 
 RESOLVE_CACHE = {}  # hostname : address
 
@@ -51,19 +53,18 @@ class MasterEntry(object):
     def __init__(self, masteruri=None, mastername=None, address=None):
         self.masteruri = masteruri
         self._masternames = []
-        self.add_mastername(mastername)
+        if mastername:
+            self.add_mastername(mastername)
         self.mutex = RLock()
         # addresses: hostname (at first place if available), IPv4 or IPv6
         self._addresses = []
         self.add_address(address)
 
     def __repr__(self):
-        return ''.join([utf8(self.masteruri), ':\n',
-                        '  masternames: ', utf8(self._masternames), '\n',
-                        '  addresses: ', utf8(self._addresses), '\n'])
+        return "MasterEntry<%s, names=%s, addresses=%s>" % (self.masteruri, self._masternames, self._addresses)
 
     def entry(self):
-        return (self.masteruri, list(self._masternames), list(self._addresses))
+        return [self.masteruri] + list(self._addresses)
 
     def has_mastername(self, mastername):
         return mastername in self._masternames
@@ -74,7 +75,7 @@ class MasterEntry(object):
 
     def add_mastername(self, mastername):
         if mastername and mastername not in self._masternames:
-            self._masternames.append(mastername)
+            self._masternames.insert(0, mastername)
 
     def add_address(self, address):
         if address and not self.has_address(address):
@@ -149,10 +150,12 @@ class MasterEntry(object):
     def get_masternames(self):
         return list(self._masternames)
 
-    def get_address(self):
+    def get_address(self, prefer_hostname=True):
         with self.mutex:
             try:
-                return self._addresses[0]
+                if prefer_hostname:
+                    return self._addresses[0]
+                return self._addresses[-1]
             except Exception:
                 return None
 
@@ -171,6 +174,13 @@ class MasterEntry(object):
         except Exception:
             pass
 
+    def __eq__(self, item):
+        if isinstance(item, MasterEntry):
+            result = []
+            if nmdurl.equal_uri(self.masteruri, item.masteruri):
+                result = set(self.entry()).intersection(set(item.entry()))
+            return len(result) > 0
+        return False
 
 class NameResolution(object):
     '''
@@ -183,6 +193,14 @@ class NameResolution(object):
         self._masters = []  # sets with masters
         self._hosts = []  # sets with hosts
         self._address = []  # avoid the mixing of ip and name as address
+
+    def get_master(self, masteruri, address=None):
+        me = MasterEntry(masteruri, None, address)
+        with self.mutex:
+            for m in self._masters:
+                if m == me:
+                    return m
+        return me
 
     def remove_master_entry(self, masteruri):
         with self.mutex:
@@ -292,7 +310,7 @@ class NameResolution(object):
         with self.mutex:
             for m in self._masters:
                 if m.masteruri == masteruri or m.has_mastername(masteruri):
-                    return m.get_address()
+                    return m.get_address(prefer_hostname=False)
             return get_hostname(masteruri)
 
     def addresses(self, masteruri):
@@ -312,9 +330,11 @@ class NameResolution(object):
                     else:
                         break
         try:
-            if MasterEntry.is_legal_ip(address):
-                (hostname, _, _) = socket.gethostbyaddr(address)
-                return hostname
+            pass
+            #self.add_address(address)
+            # if MasterEntry.is_legal_ip(address):
+            #     (hostname, _, _) = socket.gethostbyaddr(address)
+            #     return hostname
         except Exception:
             import traceback
             print(traceback.format_exc())
