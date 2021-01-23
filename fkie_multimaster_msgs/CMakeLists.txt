@@ -30,8 +30,6 @@ add_service_files(
   Task.srv
 )
 
-catkin_python_setup()
-
 generate_messages(DEPENDENCIES std_msgs)
 
 # generate code for gRPC protocols
@@ -46,7 +44,7 @@ catkin_package(
 install(
     DIRECTORY
     ${GRPC_GENERATED_SRC_DIR}
-    DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    DESTINATION ${CATKIN_PACKAGE_PYTHON_DESTINATION}
 )
 
 install(
