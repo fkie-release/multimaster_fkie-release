@@ -19,9 +19,15 @@ from fkie_node_manager_daemon import screen
 from fkie_node_manager_daemon.common import isstring
 from fkie_node_manager_daemon.settings import RESPAWN_SCRIPT
 try:
-    import fkie_node_manager as nm
+    from fkie_node_manager import get_ros_home
+    from fkie_node_manager import Settings
+    from fkie_node_manager import StartHandler
+    from fkie_node_manager import StartException
 except Exception:
-    import reduced_nm as nm
+    from fkie_node_manager.reduced_nm import get_ros_home
+    from fkie_node_manager.reduced_nm import Settings
+    from fkie_node_manager.reduced_nm import StartHandler
+    from fkie_node_manager.reduced_nm import StartException
 
 
 def _get_optparse():
@@ -108,16 +114,16 @@ def main(argv=sys.argv):
         options, args = parse_options(argv)
         if options['show_screen_log']:
             logfile = screen.get_logfile(node=options['show_screen_log'])
-            if not logfile:
+            if not os.path.isfile(logfile):
                 raise Exception('screen logfile not found for: %s' % options['show_screen_log'])
-            cmd = ' '.join([nm.Settings.LOG_VIEWER, str(logfile)])
+            cmd = ' '.join([Settings.LOG_VIEWER, str(logfile)])
             print(cmd)
             p = subprocess.Popen(shlex.split(cmd))
             p.wait()
             print_help = False
         if options['tail_screen_log']:
             logfile = screen.get_logfile(node=options['tail_screen_log'])
-            if not logfile:
+            if not os.path.isfile(logfile):
                 raise Exception('screen logfile not found for: %s' % options['tail_screen_log'])
             cmd = ' '.join(['tail', '-f', '-n', '25', str(logfile)])
             print(cmd)
@@ -126,16 +132,16 @@ def main(argv=sys.argv):
             print_help = False
         elif options['show_ros_log']:
             logfile = screen.get_ros_logfile(node=options['show_ros_log'])
-            if not logfile:
+            if not os.path.isfile(logfile):
                 raise Exception('ros logfile not found for: %s' % options['show_ros_log'])
-            cmd = ' '.join([nm.Settings.LOG_VIEWER, str(logfile)])
+            cmd = ' '.join([Settings.LOG_VIEWER, str(logfile)])
             print(cmd)
             p = subprocess.Popen(shlex.split(cmd))
             p.wait()
             print_help = False
         elif options['ros_log_path']:
             if options['ros_log_path'] == '[]':
-                print(nm.get_ros_home())
+                print(get_ros_home())
             else:
                 print(screen.get_logfile(node=options['ros_log_path']))
             print_help = False
@@ -178,6 +184,23 @@ def rosconsole_cfg_file(package, loglevel='INFO'):
     return result
 
 
+def remove_src_binary(cmdlist):
+    result = []
+    count = 0
+    if len(cmdlist) > 1:
+        for c in cmdlist:
+            if c.find('/src/') == -1:
+                result.append(c)
+                count += 1
+    else:
+        result = cmdlist
+    if count > 1:
+        # we have more binaries in src directory
+        # aks the user
+        result = cmdlist
+    return result
+
+
 def runNode(package, executable, name, args, prefix='', repawn=False, masteruri=None, loglevel=''):
     '''
     Runs a ROS node. Starts a roscore if needed.
@@ -185,28 +208,29 @@ def runNode(package, executable, name, args, prefix='', repawn=False, masteruri=
     if not masteruri:
         masteruri = masteruri_from_ros()
     # start roscore, if needed
-    nm.StartHandler._prepareROSMaster(masteruri)
+    StartHandler._prepareROSMaster(masteruri)
     # start node
     try:
         cmd = roslib.packages.find_node(package, executable)
     except roslib.packages.ROSPkgException as e:
         # multiple nodes, invalid package
-        raise nm.StartException(str(e))
+        raise StartException(str(e))
     # handle different result types str or array of string (electric / fuerte)
     if isstring(cmd):
         cmd = [cmd]
     if cmd is None or len(cmd) == 0:
-        raise nm.StartException(' '.join([executable, 'in package [', package, '] not found!\n\nThe package was created?\nIs the binary executable?\n']))
+        raise StartException(' '.join([executable, 'in package [', package, '] not found!\n\nThe package was created?\nIs the binary executable?\n']))
     # create string for node parameter. Set arguments with spaces into "'".
+    cmd = remove_src_binary(cmd)
     node_params = ' '.join(''.join(["'", a, "'"]) if a.find(' ') > -1 else a for a in args[1:])
     cmd_args = [screen.get_cmd(name), RESPAWN_SCRIPT if repawn else '', prefix, cmd[0], node_params]
     print('run on remote host:', ' '.join(cmd_args))
     # determine the current working path
     arg_cwd = getCwdArg('__cwd', args)
-    cwd = nm.get_ros_home()
+    cwd = get_ros_home()
     if not (arg_cwd is None):
         if arg_cwd == 'ROS_HOME':
-            cwd = nm.get_ros_home()
+            cwd = get_ros_home()
         elif arg_cwd == 'node':
             cwd = os.path.dirname(cmd[0])
     # set the masteruri to launch with other one master
