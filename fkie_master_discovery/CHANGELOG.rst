@@ -2,6 +2,17 @@
 Changelog for package fkie_master_discovery
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.3.0 (2022-07-15)
+------------------
+* fkie_master_discovery: do not send requests if listen_mcast is disabled
+* fkie_master_discovery: shutdown node if time jump into past detected
+  this cause whole system instability
+* fkie_master_discovery: send init requests in mixed scenario
+  Network has hosts with different heartbeat hz
+* added support for request user name of running master_discovery and daemon
+* wait until RCP port is free to avoid shutdown because of "new node registered with same name"
+* Contributors: Alexander Tiderko
+
 1.2.7 (2021-01-23)
 ------------------
 
@@ -11,7 +22,7 @@ Changelog for package fkie_master_discovery
 * replaced Thread.isAlive() by .is_alive() according to issue `#149 <https://github.com/fkie/multimaster_fkie/issues/149>`_
 * Contributors: Alexander Tiderko
 
-1.2.5 (2021-01-16)
+1.2.5 (2020-11-28)
 ------------------
 
 1.2.4 (2020-11-11)
@@ -21,10 +32,6 @@ Changelog for package fkie_master_discovery
   This caused problems if ROS_IP of ROS_HOSTNAME was used
 * master_discovery: added parameter to hide nodes, topics and services for filtered requests
 * Contributors: Alexander Tiderko
-
-1.2.1 (2020-07-22)
-------------------
-* fkie_multimaster: added conditions for python3 dependencies in package xml
 
 1.2.0 (2020-07-22)
 ------------------
