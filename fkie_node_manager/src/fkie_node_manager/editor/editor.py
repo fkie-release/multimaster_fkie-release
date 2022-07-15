@@ -33,7 +33,7 @@
 
 
 from python_qt_binding.QtCore import QPoint, QSize, Qt, Signal
-from python_qt_binding.QtGui import QColor, QIcon, QKeySequence, QTextCursor
+from python_qt_binding.QtGui import QColor, QIcon, QKeySequence, QPalette, QTextCursor
 import os
 
 import rospy
@@ -101,7 +101,7 @@ class Editor(QMainWindow):
     dialog was closed.
     '''
 
-    def __init__(self, filenames, search_text='', parent=None):
+    def __init__(self, filenames, search_text='', master_name='', parent=None):
         '''
         :param filenames: a list with filenames. The last one will be activated.
         :type filenames: [str]
@@ -119,7 +119,7 @@ class Editor(QMainWindow):
         window_title = "ROSLaunch Editor"
         if filenames:
             window_title = self.__getTabName(filenames[0])
-        self.setWindowTitle(window_title)
+        self.setWindowTitle('%s @%s' % (window_title, master_name))
         self.init_filenames = filenames
         self._search_node_count = 0
         self._search_thread = None
@@ -128,6 +128,7 @@ class Editor(QMainWindow):
         self.files = []
         # create tabs for files
         self.main_widget = QWidget(self)
+        self.main_widget.setObjectName("editorMain")
         self.verticalLayout = QVBoxLayout(self.main_widget)
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout.setSpacing(1)
@@ -172,6 +173,16 @@ class Editor(QMainWindow):
             if f:
                 self.on_load_request(f, search_text, only_launch=True)
         self.log_dock.setVisible(False)
+        try:
+            pal = self.tabWidget.palette()
+            self._default_color = pal.color(QPalette.Window)
+            color = QColor.fromRgb(nm.settings().host_color(master_name, self._default_color.rgb()))
+            bg_style_launch_dock = "QWidget#editorMain { background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 %s, stop: 0.7 %s);}" % (color.name(), self._default_color.name())
+            self.setStyleSheet('%s' % (bg_style_launch_dock))
+        except Exception as _:
+            pass
+            # import traceback
+            # print(traceback.format_exc())
 
 #  def __del__(self):
 #    print "******** destroy", self.objectName()
@@ -419,7 +430,7 @@ class Editor(QMainWindow):
                     self.on_graph_info("search thread: start search for '%s'" % self._search_thread._search_text)
                     self._search_thread.start()
             if goto_line != -1:
-                self._goto(goto_line, True)
+                self.tabWidget.currentWidget().goto(goto_line, True)
             self.upperButton.setEnabled(self.tabWidget.count() > 1)
         except Exception as err:
             self.tabWidget.setUpdatesEnabled(True)
@@ -439,7 +450,7 @@ class Editor(QMainWindow):
     def on_graph_goto(self, path, linenr):
         if path == self.tabWidget.currentWidget().filename:
             if linenr != -1:
-                self._goto(linenr, True)
+                self.tabWidget.currentWidget().goto(linenr, True)
 
     def on_graph_finished(self):
         self.on_graph_info("build tree: finished", False)
@@ -547,7 +558,8 @@ class Editor(QMainWindow):
                 event.accept()
             elif result == MessageBox.No:
                 event.accept()
-            elif rospy.is_shutdown():
+            # elif rospy.is_shutdown():
+            else:
                 event.ignore()
         else:
             event.accept()
@@ -695,19 +707,8 @@ class Editor(QMainWindow):
             value, ok = QInputDialog.getInt(self, "Goto", self.tr("Line number:"),
                                                   QLineEdit.Normal, min=1, step=1)
         if ok:
-            self._goto(value)
+            self.tabWidget.currentWidget().goto(value)
         self.tabWidget.currentWidget().setFocus(Qt.ActiveWindowFocusReason)
-
-    def _goto(self, linenr, select_line=True):
-            if linenr > self.tabWidget.currentWidget().document().blockCount():
-                linenr = self.tabWidget.currentWidget().document().blockCount()
-            curpos = self.tabWidget.currentWidget().textCursor().blockNumber() + 1
-            while curpos != linenr:
-                mov = QTextCursor.NextBlock if curpos < linenr else QTextCursor.PreviousBlock
-                self.tabWidget.currentWidget().moveCursor(mov)
-                curpos = self.tabWidget.currentWidget().textCursor().blockNumber() + 1
-            self.tabWidget.currentWidget().moveCursor(QTextCursor.EndOfBlock)
-            self.tabWidget.currentWidget().moveCursor(QTextCursor.StartOfBlock, QTextCursor.KeepAnchor)
 
     ##############################################################################
     # SLOTS for search dialog
