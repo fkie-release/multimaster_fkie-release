@@ -2,12 +2,26 @@
 Changelog for package fkie_node_manager_daemon
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.3.0 (2022-07-15)
+------------------
+Forthcoming
+-----------
+* fkie_node_manager_damoen: fix clear_param for group
+  These parameter are now deleted on restart nodes with reload global
+  parameter
+* fkie_node_manager_daemon: fix find package binaries
+* fkie_node_manager_daemon: use threads for each sensor instead of timer
+* fkie_node_manager_daemon: set GRPC_ENABLE_FORK_SUPPORT=0 by default
+* fkie_node_manager_daemon: added parameter to set grpc poll strategy and verbosity
+* Contributors: Alexander Tiderko
+
 1.2.7 (2021-01-23)
 ------------------
 
 1.2.6 (2021-01-16)
 ------------------
 * fkie_node_manager_daemon: fixed delete node's log file if no latest folder exists
+* Contributors: Alexander Tiderko
 
 1.2.5 (2021-01-16)
 ------------------
@@ -22,11 +36,6 @@ Changelog for package fkie_node_manager_daemon
 * fkie_node_manager_daemon: catch error if no net_if_stats available
 * fix for issue `#138 <https://github.com/fkie/multimaster_fkie/issues/138>`_
 * fkie_node_manager: fixed detection of included files in 'value' tags
-* Contributors: Alexander Tiderko
-
-1.2.1 (2020-07-22)
-------------------
-* fkie_multimaster: added conditions for python3 dependencies in package xml
 * Contributors: Alexander Tiderko
 
 1.2.0 (2020-07-22)
