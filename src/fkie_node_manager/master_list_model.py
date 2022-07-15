@@ -32,15 +32,16 @@
 
 
 import sys
-from python_qt_binding.QtCore import QObject, QRect, Qt, Signal
+from python_qt_binding.QtCore import QObject, QRect, Qt, Signal, QEvent
 from python_qt_binding.QtGui import QIcon, QImage, QStandardItem, QStandardItemModel
 try:
     from python_qt_binding.QtGui import QItemDelegate, QPushButton, QStyle
 except Exception:
-    from python_qt_binding.QtWidgets import QItemDelegate, QPushButton, QStyle
+    from python_qt_binding.QtWidgets import QItemDelegate, QPushButton, QStyle, QStyledItemDelegate
 from socket import getaddrinfo, AF_INET6
 import threading
 
+from fkie_master_discovery.master_discovery import DiscoveredMaster
 from fkie_master_discovery.common import get_hostname
 from fkie_node_manager_daemon.common import isstring
 import fkie_node_manager as nm
@@ -130,6 +131,7 @@ class MasterSyncItem(QStandardItem):
     @synchronized.setter
     def synchronized(self, value):
         self.button.set_sync_state(value)
+        self.model().setData(self.index(), value)
 
     def __eq__(self, item):
         return self.button == item
@@ -270,7 +272,7 @@ class MasterItem(QStandardItem):
             if quality is not None and quality != -1.:
                 tooltip = ''.join([tooltip, '<dt>', 'Quality: ', str(quality), ' %', '</dt>'])
             else:
-                tooltip = ''.join([tooltip, '<dt>', 'Quality: not available</dt>'])
+                tooltip = ''.join([tooltip, '<dt>', 'Quality: not available, start <b>master_discovery</b> with <b>heartbeat_hz</b> parameter >= %.02f</dt>' % DiscoveredMaster.MIN_HZ_FOR_QUALILTY])
         else:
             tooltip = ''.join([tooltip, '<dt>', 'offline', '</dt>'])
         tooltip = ''.join([tooltip, '</dl>'])
@@ -341,7 +343,7 @@ class MasterItem(QStandardItem):
         if isstring(item):
             local = False
             try:
-                local = nm.is_local(item)
+                local = nm.is_local(get_hostname(nm.nameres().masteruri(item)))
             except Exception:
                 pass
             if self.local and not local:  # local hosts are at the top
@@ -456,8 +458,6 @@ class MasterModel(QStandardItemModel):
             root.appendRow(items)
         # add the sync botton and connect the signals
         if self.parent_view is not None:
-            newindex = index if index > -1 else root.rowCount() - 1
-            self.parent_view.setIndexWidget(self.index(newindex, self.COL_SYNC), sync_item.button.widget)
             sync_item.button.clicked.connect(self.on_sync_clicked)
         return items
 
@@ -638,7 +638,7 @@ class MasterIconsDelegate(QItemDelegate):
                 if item.quality is not None and item.quality != -1.:
                     tooltip = '%s\n<dt>Quality: %.2f </dt>' % (tooltip, item.quality)
                 else:
-                    tooltip = '%s\n<dt>Quality: not available</dt>' % (tooltip)
+                    tooltip = '%s\n<dt>Quality: not available, start <b>master_discovery</b> with <b>heartbeat_hz</b> parameter >= %.02f</dt>' % (tooltip, DiscoveredMaster.MIN_HZ_FOR_QUALILTY)
             else:
                 tooltip = '%s\n<dt>offline</dt>' % (tooltip)
             # update warnings
@@ -711,3 +711,23 @@ class MasterIconsDelegate(QItemDelegate):
         rect.setHeight(self._icon_size)
         self._idx_icon += self._icon_size + self._hspacing
         return rect
+
+
+class MasterButtonDelegate(QStyledItemDelegate):
+
+    def editorEvent(self, event, model, option, index):
+
+        if event.type() == QEvent.MouseButtonRelease:
+            item = index.model().itemFromIndex(index)
+            item.button.widget.click()
+            return True
+        return QStyledItemDelegate.editorEvent(self, event, model, option, index)
+
+
+    def paint(self, painter, option, index):
+        item = index.model().itemFromIndex(index)
+        item.button.widget.setGeometry(option.rect)
+        painter.save()
+        painter.translate(option.rect.topLeft())
+        item.button.widget.render(painter)
+        painter.restore()

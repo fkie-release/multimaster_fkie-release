@@ -169,6 +169,7 @@ class StartHandler(object):
                 startcmd.append(masteruri)
             rospy.loginfo("Run remote on %s: %s", host, ' '.join(startcmd))
             try:
+                error = ''
                 _, stdout, stderr, ok = nm.ssh().ssh_exec(host, startcmd, user, pw, auto_pw_request, close_stdin=True)
                 if ok:
                     output = stdout.read()
@@ -177,16 +178,16 @@ class StartHandler(object):
                     stderr.close()
                     if error:
                         rospy.logwarn("ERROR while start '%s': %s", name, error)
-                        raise StartException(''.join(['The host "', host, '" reports:\n', error]))
+                        raise StartException("The host '%s' reports:\n%s" % (host, error))
                     if output:
-                        if output.find("dn't") != -1:
+                        if output.find(b"dn't") != -1:
                             rospy.logwarn("Warning while start '%s': %s", name, output)
                         else:
                             rospy.loginfo("STDOUT while start '%s': %s", name, output)
                 else:
                     if error:
                         rospy.logwarn("ERROR while start '%s': %s", name, error)
-                        raise StartException(''.join(['The host "', host, '" reports:\n', error]))
+                        raise StartException("The host '%s' reports:\n%s" % (host, error))
             except nm.AuthenticationRequest as e:
                 raise nm.InteractionNeededError(e, cls.runNodeWithoutConfig, {'host': host, 'package': package, 'binary': binary, 'name': name, 'args': args, 'masteruri': masteruri, 'use_nmd': use_nmd, 'auto_pw_request': auto_pw_request, 'user': user, 'pw': pw, 'path': path})
 
@@ -238,7 +239,7 @@ class StartHandler(object):
                 for n in [1, 2, 3, 4]:
                     try:
                         if n == 1:
-                            print("Launch ROS Master in screen  ...")
+                            print("Launch ROS Master in screen  ... %s" % (cmd_args))
                             SupervisedPopen(shlex.split(cmd_args), env=new_env, object_id="ROSCORE", description="Start roscore")
                         elif n == 2:
                             print("ROS Master takes too long for start, wait for next 10 sec ...")
@@ -370,7 +371,7 @@ class StartHandler(object):
                 socket.setdefaulttimeout(None)
 
     @classmethod
-    def openLog(cls, nodename, host, user=None, only_screen=False):
+    def openLog(cls, nodename, host, user=None, only_screen=False, only_roslog=False):
         '''
         Opens the log file associated with the given node in a new terminal.
 
@@ -386,11 +387,12 @@ class StartHandler(object):
         if nm.is_local(host):
             found = False
             screenLog = screen.get_logfile(node=nodename)
-            if os.path.isfile(screenLog):
-                cmd = nm.settings().terminal_cmd([nm.settings().log_viewer, screenLog], title_opt)
-                rospy.loginfo("open log: %s", cmd)
-                SupervisedPopen(shlex.split(cmd), object_id="Open log", description="Open log for '%s' on '%s'" % (utf8(nodename), utf8(host)))
-                found = True
+            if not only_roslog:
+                if os.path.isfile(screenLog):
+                    cmd = nm.settings().terminal_cmd([nm.settings().log_viewer, screenLog], title_opt)
+                    rospy.loginfo("open log: %s", cmd)
+                    SupervisedPopen(shlex.split(cmd), object_id="Open log", description="Open log for '%s' on '%s'" % (utf8(nodename), utf8(host)))
+                    found = True
             # open roslog file
             roslog = screen.get_ros_logfile(nodename)
             if os.path.isfile(roslog) and (not only_screen or not found):
@@ -403,7 +405,8 @@ class StartHandler(object):
                 rospy.logwarn('no log files found for %s' % utf8(nodename))
             return found
         else:
-            _ps = nm.ssh().ssh_x11_exec(host, [nm.settings().start_remote_script, '--show_screen_log', nodename], title_opt, user)
+            if not only_roslog:
+                _ps = nm.ssh().ssh_x11_exec(host, [nm.settings().start_remote_script, '--show_screen_log', nodename], title_opt, user)
             if not only_screen:
                 _ps = nm.ssh().ssh_x11_exec(host, [nm.settings().start_remote_script, '--show_ros_log', nodename], title_opt.replace('LOG', 'ROSLOG'), user)
         return False
