@@ -52,6 +52,11 @@ class MonitorChannel(ChannelInterface):
     '''
       :ivar DiagnosticArray,str remote_diagnostics_signal: signal emit diagnostic messages from remote system {DiagnosticArray, grpc_url}.
     '''
+    username_signal = Signal(str, str)
+    '''
+      :ivar str,str user_signal: signal emit current user for remote system {user name, grpc_url}.
+    '''
+
 
     def clear_cache(self, grpc_url=''):
         pass
@@ -97,12 +102,30 @@ class MonitorChannel(ChannelInterface):
             self.close_channel(channel, uri)
 
     def kill_process(self, pid, grpc_url='grpc://localhost:12321'):
-        rospy.logdebug("kill process %d on %s" % (pid, grpc_url))
+        if pid is not None:
+            rospy.logdebug("kill process %d on %s" % (pid, grpc_url))
+            uri, _ = nmdurl.split(grpc_url)
+            vm, channel = self.get_monitor_manager(uri)
+            try:
+                vm.kill_process(pid)
+            except Exception as e:
+                self.error.emit("kill_process", "grpc://%s" % uri, "", e)
+            finally:
+                self.close_channel(channel, uri)
+
+    def get_user_threaded(self, grpc_url='grpc://localhost:12321'):
+        self._threads.start_thread("gut_%s" % grpc_url, target=self.get_user, args=(grpc_url,))
+
+    def get_user(self, grpc_url='grpc://localhost:12321'):
+        rospy.logdebug("get user from %s" % (grpc_url))
         uri, _ = nmdurl.split(grpc_url)
         vm, channel = self.get_monitor_manager(uri)
+        user = ''
         try:
-            vm.kill_process(pid)
+            user = vm.get_user()
+            self.username_signal.emit(user, grpc_url)
         except Exception as e:
-            self.error.emit("kill_process", "grpc://%s" % uri, "", e)
+            self.error.emit("get_user", "grpc://%s" % uri, "", e)
         finally:
             self.close_channel(channel, uri)
+        return user
