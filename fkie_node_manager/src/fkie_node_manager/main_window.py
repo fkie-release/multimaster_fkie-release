@@ -69,7 +69,7 @@ from .editor.editor import Editor
 from .launch_enhanced_line_edit import EnhancedLineEdit
 from .launch_files_widget import LaunchFilesWidget
 from .log_widget import LogWidget
-from .master_list_model import MasterModel, MasterIconsDelegate
+from .master_list_model import MasterModel, MasterButtonDelegate, MasterIconsDelegate
 from .master_view_proxy import MasterViewProxy
 from .menu_rqt import MenuRqt
 from .network_discovery_dialog import NetworkDiscoveryDialog
@@ -129,11 +129,15 @@ class MainWindow(QMainWindow):
                         }
         self.__current_icon = None
         self.__current_master_label_name = None
+        self.mcast_port = 11511
         self._syncs_to_start = []  # hostnames
+        self._daemons_to_start = []  # hostnames
         self._accept_next_update = False
         self._last_window_state = False
         self._description_history = []
         self._description_accept = ''
+        self._nmd_last_errors = {}  # msg: timestamp
+        self._ts_nmd_error_last_check = 0
         # self.setAttribute(Qt.WA_AlwaysShowToolTips, True)
         # setup main window frame
         self.setObjectName('MainWindow')
@@ -222,10 +226,14 @@ class MainWindow(QMainWindow):
         self._progress_queue = ProgressQueue(self.progressFrame, self.progressBar, self.progressCancelButton, 'Network')
         self._progress_queue_sync = ProgressQueue(self.progressFrame_sync, self.progressBar_sync, self.progressCancelButton_sync, 'Sync')
 
+        rospy.loginfo('Detected ROS Master URI: %s' % self.getMasteruri())
+
         # initialize the view for the discovered ROS master
         self.master_model = MasterModel(self.getMasteruri())
         self.master_model.sync_start.connect(self.on_sync_start)
         self.master_model.sync_stop.connect(self.on_sync_stop)
+        self.master_delegate_button = MasterButtonDelegate()
+        self.masterTableView.setItemDelegateForColumn(0, self.master_delegate_button)
         self.master_delegate = MasterIconsDelegate()
         self.masterTableView.setItemDelegateForColumn(1, self.master_delegate)
         self.masterTableView.setModel(self.master_model)
@@ -342,6 +350,7 @@ class MainWindow(QMainWindow):
         self._update_handler.master_info_signal.connect(self.on_master_info_retrieved)
         self._update_handler.master_errors_signal.connect(self.on_master_errors_retrieved)
         self._update_handler.timediff_signal.connect(self.on_master_timediff_retrieved)
+        self._update_handler.username_signal.connect(self.on_master_username_retrieved)
         self._update_handler.error_signal.connect(self.on_master_info_error)
 
         # this monitor class is used, if no master_discovery node is running to get the state of the local ROS master
@@ -370,6 +379,7 @@ class MainWindow(QMainWindow):
         self._subscribe()
         nm.nmd().monitor.system_diagnostics_signal.connect(self._callback_system_diagnostics)
         nm.nmd().monitor.remote_diagnostics_signal.connect(self._callback_diagnostics)
+        nm.nmd().monitor.username_signal.connect(self._callback_username)
 
         self._select_index = 0
         self._shortcut_restart_nodes = QShortcut(QKeySequence(self.tr("Ctrl+Shift+R", "restart selected nodes")), self)
@@ -489,7 +499,7 @@ class MainWindow(QMainWindow):
                             if m.is_local:
                                 self._stop_updating()
                                 self._stop_local_master = m
-                            m.stop_nodes_by_name(m.get_nodes_runningIfLocal(), True, [rospy.get_name(), '/rosout'])
+                            m.stop_nodes_by_name(m.get_nodes_runningIfLocal(remove_system_nodes=True), True, [rospy.get_name(), '/rosout'])
                             if not m.is_local:
                                 m.killall_roscore()
                     except Exception as e:
@@ -508,13 +518,13 @@ class MainWindow(QMainWindow):
             self.masternameLabel.setText('<span style=" font-size:14pt; font-weight:600;">%s ...closing...</span>' % self.masternameLabel.text())
             rospy.loginfo("Wait for running processes are finished...")
             event.ignore()
+        try:
+            self.storeSetting()
+        except Exception as e:
+            rospy.logwarn("Error while store settings: %s" % e)
         if event.isAccepted():
             self.on_finish = True
             self.master_timecheck_timer.stop()
-            try:
-                self.storeSetting()
-            except Exception as e:
-                rospy.logwarn("Error while store settings: %s" % e)
             self.finish()
             QMainWindow.closeEvent(self, event)
 
@@ -711,8 +721,8 @@ class MainWindow(QMainWindow):
             else:
                 try:
                     # determine the ROS network ID
-                    mcast_group = rospy.get_param(rospy.names.ns_join(discoverer, 'mcast_port'))
-                    self.networkDock.setWindowTitle("ROS Network [id: %d]" % (mcast_group - 11511))
+                    self.mcast_port = rospy.get_param(rospy.names.ns_join(discoverer, 'mcast_port'))
+                    self.networkDock.setWindowTitle("ROS Network [id: %d]" % (self.mcast_port - 11511))
                     self._subscribe()
                 except Exception:
                     # try to get the multicast port of master discovery from log
@@ -812,11 +822,20 @@ class MainWindow(QMainWindow):
         if msg.state == MasterState.STATE_CHANGED:
             nm.nameres().add_master_entry(msg.master.uri, msg.master.name, host)
             msg.master.name = nm.nameres().mastername(msg.master.uri)
-            self.getMaster(msg.master.uri).master_state = msg.master
-            self._assigne_icon(msg.master.name)
-            self.master_model.updateMaster(msg.master)
-            if nm.settings().autoupdate:
-                self._update_handler.requestMasterInfo(msg.master.uri, msg.master.monitoruri)
+            master = self.getMaster(msg.master.uri)
+            update = master.master_state is None
+            if master.master_state is not None:
+                if master.master_state.last_change.secs != msg.master.last_change.secs \
+                    or master.master_state.last_change.nsecs != msg.master.last_change.nsecs:
+                    update = True
+            if update:
+                master.master_state = msg.master
+                self._assigne_icon(msg.master.name)
+                self.master_model.updateMaster(msg.master)
+                if nm.settings().autoupdate:
+                    self._update_handler.requestMasterInfo(msg.master.uri, msg.master.monitoruri)
+                else:
+                    rospy.loginfo("Autoupdate disabled, the data will not be updated for %s" % msg.master.uri)
             else:
                 rospy.loginfo("Autoupdate disabled, the data will not be updated for %s" % msg.master.uri)
             if not msg.master.online:
@@ -846,9 +865,9 @@ class MainWindow(QMainWindow):
                 self.master_model.removeMaster(msg.master.name)
                 self.setMasterOnline(msg.master.uri, False)
 #                self.removeMaster(msg.master.uri)
-        # start master_sync, if it was selected in the start dialog to start with master_dsicovery
-        if self._syncs_to_start:
-            if msg.state in [MasterState.STATE_NEW, MasterState.STATE_CHANGED]:
+        if msg.state in [MasterState.STATE_NEW, MasterState.STATE_CHANGED]:
+            # start master_sync, if it was selected in the start dialog to start with master_dsicovery
+            if self._syncs_to_start:
                 # we don't know which name for host was used to start master discovery
                 if host in self._syncs_to_start:
                     self._syncs_to_start.remove(host)
@@ -862,6 +881,21 @@ class MainWindow(QMainWindow):
                         if address in self._syncs_to_start:
                             self._syncs_to_start.remove(address)
                             self.on_sync_start(msg.master.uri)
+            # start daemon, if it was selected in the start dialog to start with master_dsicovery
+            if self._daemons_to_start:
+                # we don't know which name for host was used to start master discovery
+                if host in self._daemons_to_start:
+                    self._daemons_to_start.remove(host)
+                    self.on_daemon_start(msg.master.uri)
+                elif msg.master.name in self._daemons_to_start:
+                    self._daemons_to_start.remove(msg.master.name)
+                    self.on_daemon_start(msg.master.uri)
+                else:
+                    addresses = nm.nameres().addresses(msg.master.uri)
+                    for address in addresses:
+                        if address in self._daemons_to_start:
+                            self._daemons_to_start.remove(address)
+                            self.on_daemon_start(msg.master.uri)
 #      if len(self.masters) == 0:
 #        self._setLocalMonitoring(True)
 
@@ -898,6 +932,7 @@ class MainWindow(QMainWindow):
 #    cputimes_m = os.times()
 #    cputime_init_m = cputimes_m[0] + cputimes_m[1]
         if minfo.masteruri in self.masters:
+            has_master_sync = False
             for _, master in self.masters.items():  # _:=uri
                 try:
                     if not master.online and master.masteruri != minfo.masteruri:
@@ -932,9 +967,12 @@ class MainWindow(QMainWindow):
                             if self.default_profile_load:
                                 self.default_profile_load = False
                                 QTimer.singleShot(2000, self._load_default_profile_slot)
+                        has_master_sync = has_master_sync or 'fkie_multimaster_msgs/GetSyncInfo' in [srv.type for srv in master.master_info.services.values()]
                     self.capabilitiesTable.updateState(minfo.masteruri, minfo)
                 except Exception as e:
                     rospy.logwarn("Error while process received master info from %s: %s", minfo.masteruri, utf8(e))
+            for _, master in self.masters.items():
+                master.has_master_sync = has_master_sync
             # update the duplicate nodes
             self.updateDuplicateNodes()
             # update the buttons, whether master is synchronized or not
@@ -957,6 +995,11 @@ class MainWindow(QMainWindow):
 
     def on_master_timediff_retrieved(self, masteruri, timediff):
         self.master_model.updateTimeDiff(nm.nameres().mastername(masteruri), timediff)
+
+    def on_master_username_retrieved(self, masteruri, username):
+        master = self.getMaster(masteruri, create_new=False)
+        if master is not None:
+            master.current_user = username
 
     def on_master_info_error(self, masteruri, error):
         if masteruri not in self._con_tries:
@@ -1075,31 +1118,41 @@ class MainWindow(QMainWindow):
                                    '%s' % utf8(err))
 
     def on_set_time_clicked(self):
-        if self.currentMaster is not None:  # and not self.currentMaster.is_local:
+        master2update = self.currentMaster
+        if master2update is not None:  # and not master2update.is_local:
             time_dialog = QDialog()
             ui_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ui', 'TimeInput.ui')
             loadUi(ui_file, time_dialog)
-            host = get_hostname(self.currentMaster.master_state.uri)
+            host = get_hostname(master2update.master_state.uri)
             time_dialog.setWindowTitle('Set time on %s' % host)
             time_dialog.hostsComboBox.addItems(nm.history().cachedParamValues('/ntp'))
-            if self.currentMaster.is_local:
+            if master2update.is_local:
                 time_dialog.dateFrame.setVisible(False)
             if time_dialog.exec_():
-                running_nodes = self.currentMaster.get_nodes_runningIfLocal(remove_system_nodes=True)
+                running_nodes = master2update.get_nodes_runningIfLocal(remove_system_nodes=True)
+                restart_ret = MessageBox.No
                 if running_nodes:
-                    ret = MessageBox.question(self, 'Set Time', 'There are running nodes. Stop them?', buttons=MessageBox.Yes | MessageBox.No)
-                    if ret == MessageBox.Yes:
-                        self.currentMaster.stop_nodes_by_name(running_nodes)
+                    restart_ret = MessageBox.question(self, 'Set Time', 'There are running nodes. Stop them?\nNote: on "YES" only system nodes will be restarted automatically!', buttons=MessageBox.Yes | MessageBox.No)
+                    if restart_ret == MessageBox.Yes:
+                        if '/node_manager' in running_nodes:
+                            del running_nodes['/node_manager']
+                        if '/node_manager_daemon' in running_nodes:
+                            master2update.reloading_files = master2update.launchfiles
+                            master2update.restarting_daemon = True
+                        master2update.stop_nodes_by_name(running_nodes, force=True)
+                        master2update._progress_queue.start()
+
                 if time_dialog.dateRadioButton.isChecked():
                     try:
-                        rospy.loginfo("Set remote host time to local time: %s" % self.currentMaster.master_state.uri)
+                        rospy.loginfo("Set remote host time to local time: %s" % master2update.master_state.uri)
                         socket.setdefaulttimeout(10)
-                        p = xmlrpcclient.ServerProxy(self.currentMaster.master_state.monitoruri)
-                        uri, success, newtime, errormsg = p.setTime(time.time())
+                        p = xmlrpcclient.ServerProxy(master2update.master_state.monitoruri)
+                        uri, success, newtime, errormsg = p.setTime(time.time()) 
                         if not success:
+                            errormsg = str(errormsg)
                             if errormsg.find('password') > -1:
                                 errormsg += "\nPlease modify /etc/sudoers with sudoedit and add user privilege, e.g:"
-                                errormsg += "\n%s  ALL=NOPASSWD: /bin/date" % self.currentMaster.current_user
+                                errormsg += "\n%s  ALL=NOPASSWD: /bin/date" % master2update.current_user
                                 errormsg += "\n!!!needed to be at the very end of file, don't forget a new line at the end!!!"
                                 errormsg += "\n\nBe aware, it does not replace the time synchronization!"
                                 errormsg += "\nIt sets approximate time without undue delays on communication layer."
@@ -1107,15 +1160,16 @@ class MainWindow(QMainWindow):
                                                'Error while set time on %s' % uri, '%s' % utf8(errormsg))
                         else:
                             timediff = time.time() - newtime
-                            rospy.loginfo("  New time difference to %s is approx.: %.3fs" % (self.currentMaster.master_state.uri, timediff))
-                            self.on_master_timediff_retrieved(self.currentMaster.master_state.uri, timediff)
+                            rospy.loginfo("  New time difference to %s is approx.: %.3fs" % (master2update.master_state.uri, timediff))
+                            self.on_master_timediff_retrieved(master2update.master_state.uri, timediff)
                     except Exception as e:
                         errormsg = '%s' % e
                         if errormsg.find('setTime') > -1:
                             errormsg += "\nUpdate remote fkie_multimaster!"
-                        rospy.logwarn("Error while set time on %s: %s" % (self.currentMaster.master_state.uri, utf8(errormsg)))
+                        import traceback
+                        rospy.logwarn("Error while set time on %s: %s" % (master2update.master_state.uri, utf8(errormsg)))
                         MessageBox.warning(self, "Time sync error",
-                                           'Error while set time on %s' % self.currentMaster.master_state.uri,
+                                           'Error while set time on %s' % master2update.master_state.uri,
                                            '%s' % utf8(errormsg))
                     finally:
                         socket.setdefaulttimeout(None)
@@ -1124,6 +1178,39 @@ class MainWindow(QMainWindow):
                     nm.history().addParamCache('/ntp', ntp_host)
                     cmd = "%s %s" % ('sudo ntpdate -v -u -t 1', ntp_host)
                     nm.starter().ntpdate(host, cmd)
+                # now start system nodes
+                if running_nodes and restart_ret == MessageBox.Yes:
+                    if '/node_manager_daemon' in running_nodes:
+                        master2update.start_daemon()
+                    if '/master_discovery' in running_nodes:
+                        master2update._progress_queue.add2queue(utf8(uuid.uuid4()),
+                                                    'start discovering on %s' % host,
+                                                    nm.starter().runNodeWithoutConfig,
+                                                    {'host': utf8(host),
+                                                        'package': 'fkie_master_discovery',
+                                                        'binary': 'master_discovery',
+                                                        'name': '/master_discovery',
+                                                        'args': [],
+                                                        'masteruri': master2update.master_state.uri,
+                                                        'use_nmd': False,
+                                                        'auto_pw_request': False,
+                                                        'user': master2update.current_user
+                                                    })
+                    if '/master_sync' in running_nodes:
+                        master2update._progress_queue.add2queue(utf8(uuid.uuid4()),
+                                                            'start sync on ' + utf8(host),
+                                                            nm.starter().runNodeWithoutConfig,
+                                                            {'host': utf8(host),
+                                                            'package': 'fkie_master_sync',
+                                                            'binary': 'master_sync',
+                                                            'name': 'master_sync',
+                                                            'args': [],
+                                                            'masteruri': master2update.master_state.uri,
+                                                            'use_nmd': False,
+                                                            'auto_pw_request': False,
+                                                            'user': master2update.current_user
+                                                            })
+                    master2update._progress_queue.start()
 
     def on_refresh_master_clicked(self):
         if self.currentMaster is not None:
@@ -1346,6 +1433,13 @@ class MainWindow(QMainWindow):
             if node is not None:
                 master.stop_nodes([node])
 
+    def on_daemon_start(self, masteruri=None):
+        master = self.currentMaster
+        if masteruri is not None:
+            master = self.getMaster(masteruri, False)
+        if master is not None:
+            master.start_daemon()
+
     def on_master_timecheck(self):
         # HACK: sometimes the local monitoring will not be activated. This is the detection.
         if len(self.masters) < 2 and self.currentMaster is None:
@@ -1371,6 +1465,9 @@ class MainWindow(QMainWindow):
                     if not nm.settings().autoupdate:
                         text = 'Press F5 or click on reload to get info'
                     self.showMasterName(masteruri, name, text, master.master_state.online)
+                self.userComboBox.setEditText(self.currentMaster.current_user)
+                if not master.is_valid_user_master_daemon():
+                    self.showMasterName(masteruri, name, self.timestampStr(master.master_info.check_ts), master.master_state.online, 'daemon is running with different user: %s' % master.daemon_user)
             else:
                 self.showMasterName('', 'No robot selected', None, False)
         if (current_time - self._refresh_time > 30.0):
@@ -1380,19 +1477,30 @@ class MainWindow(QMainWindow):
                 if master is not None and master.master_state is not None and nm.settings().autoupdate:
                     self._update_handler.requestMasterInfo(master.master_state.uri, master.master_state.monitoruri)
                 self._refresh_time = current_time
+        for _, master in self.masters.items():
+            if master == self.currentMaster:
+                master.perform_diagnostic_requests()
+            elif int(current_time) % 3 == 0:
+                master.perform_diagnostic_requests()
 
-    def showMasterName(self, masteruri, name, timestamp, online=True):
+    def showMasterName(self, masteruri, name, timestamp, online=True, force_warning=''):
         '''
         Update the view of the info frame.
         '''
         con_err = ''
+        user_warning = ''
+        force_color_update = False
+        if not force_warning:
+            force_color_update = 'daemon is running with different user:' in self.masterInfoLabel.text()
+        else:
+            user_warning = '<span style=" color:red;">  %s</span>' % utf8(force_warning)
         try:
             tries = self._con_tries[masteruri]
             if tries > 1:
                 con_err = '<span style=" color:red;">connection problems (%s tries)! </span>' % utf8(tries)
         except Exception:
             pass
-        if self.__current_master_label_name != name:
+        if self.__current_master_label_name != name or force_color_update:
             self.__current_master_label_name = name
             show_name = name if nm.settings().show_domain_suffix else subdomain(name)
             self.masternameLabel.setText('<span style=" font-size:14pt; font-weight:600; color:black">%s</span>' % show_name)
@@ -1401,7 +1509,7 @@ class MainWindow(QMainWindow):
         ts = 'updated: %s' % utf8(timestamp) if timestamp is not None else ''
         if not nm.settings().autoupdate:
             ts = '%s<span style=" color:orange;"> AU off</span>' % ts
-        self.masterInfoLabel.setText('<span style=" font-size:8pt; color:black">%s%s</span>' % (con_err, ts))
+        self.masterInfoLabel.setText('<span style=" font-size:8pt; color:black">%s%s%s</span>' % (con_err, ts, user_warning))
 
         # load the robot image, if one exists
         if self.masternameLabel.isEnabled():
@@ -1587,8 +1695,9 @@ class MainWindow(QMainWindow):
                            'Heartbeat [Hz]': {':type': 'float', ':value': 0.5}
                            }
         params = {'Host': {':type': 'string', ':value': 'localhost'},
-                  'Network(0..99)': {':type': 'int', ':value': '0'},
+                  'Network(0..99)': {':type': 'int', ':value': str(self.mcast_port - 11511)},
                   'Start sync': {':type': 'bool', ':value': nm.settings().start_sync_with_discovery},
+                  'Start daemon': {':type': 'bool', ':value': nm.settings().start_daemon_with_discovery},
                   'Optional Parameter': params_optional
                   }
         dia = ParameterDialog(params, sidebar_var='Host', store_geometry="start_robot_dialog")
@@ -1601,6 +1710,7 @@ class MainWindow(QMainWindow):
                 hostnames = params['Host'] if isinstance(params['Host'], list) else [params['Host']]
                 port = params['Network(0..99)']
                 start_sync = params['Start sync']
+                start_daemon = params['Start daemon']
                 discovery_type = params['Optional Parameter']['Discovery type']
                 mastername = 'autodetect'
                 masteruri = 'ROS_MASTER_URI'
@@ -1637,6 +1747,7 @@ class MainWindow(QMainWindow):
                         muri = None if masteruri == 'ROS_MASTER_URI' else utf8(masteruri)
                         # stop if master_discovery already running
                         self._append_stop_for('/%s' % utf8(discovery_type), hostname, muri, self._progress_queue)
+                        self._progress_queue.start()
                         self._progress_queue.add2queue(utf8(uuid.uuid4()),
                                                        'start discovering on %s' % hostname,
                                                        nm.starter().runNodeWithoutConfig,
@@ -1663,7 +1774,7 @@ class MainWindow(QMainWindow):
                                                      '_sync_remote_nodes:=False']
                                 self._append_stop_for('/master_sync', hostname, muri, self._progress_queue_sync)
                                 self._progress_queue_sync.start()
-                                self._progress_queue.add2queue(utf8(uuid.uuid4()),
+                                self._progress_queue_sync.add2queue(utf8(uuid.uuid4()),
                                                                'start sync on %s' % hostname,
                                                                nm.starter().runNodeWithoutConfig,
                                                                {'host': utf8(hostname),
@@ -1679,6 +1790,11 @@ class MainWindow(QMainWindow):
                             else:
                                 if hostname not in self._syncs_to_start:
                                     self._syncs_to_start.append(hostname)
+                        if start_daemon:
+                            # local daemon will be started anyway
+                            if not nm.is_local(hostname):
+                                if hostname not in self._daemons_to_start:
+                                    self._daemons_to_start.append(hostname)
                     except (Exception, nm.StartException) as e:
                         import traceback
                         print(traceback.format_exc(1))
@@ -1687,6 +1803,7 @@ class MainWindow(QMainWindow):
                                            'Error while start master_discovery',
                                            utf8(e))
                     self._progress_queue.start()
+                    self._progress_queue_sync.start()
             except Exception as e:
                 MessageBox.warning(self, "Start error",
                                    'Error while parse parameter',
@@ -1704,7 +1821,7 @@ class MainWindow(QMainWindow):
             else:
                 cmuri = cmuri.replace('localhost', get_hostname(lmuri))
         elif cmuri is None:
-            cmuri = nm.nameres().masteruri(utf8(hostname))
+            cmuri = nm.nameres().masteruribyaddr(utf8(hostname))
         if cmuri is not None:
             master = self.getMaster(cmuri.rstrip('/') + '/', create_new=False)
             if master is not None:
@@ -1840,7 +1957,7 @@ class MainWindow(QMainWindow):
                     del self.editor_dialogs[grpc_path]
                     self.on_launch_edit(grpc_path, search_text, 2)
             else:
-                editor = Editor([grpc_path], search_text)
+                editor = Editor([grpc_path], search_text, master_name=self.launch_dock.path2mastername(grpc_path))
                 if editor.tabWidget.count() > 0:
                     self.editor_dialogs[grpc_path] = editor
                     editor.finished_signal.connect(self._editor_dialog_closed)
@@ -2082,6 +2199,20 @@ class MainWindow(QMainWindow):
                 self.currentMaster.show_diagnostic_messages(self._url_path(url))
         elif url.toString().startswith('open-edit://'):
             self.on_launch_edit(url.toString().replace('open-edit://', 'grpc://'))
+        elif url.toString().startswith('show-log://'):
+            if self.currentMaster is not None:
+                try:
+                    dest = url.toString().replace('show-log://', '').split('@')
+                    self.currentMaster.show_log(dest[0], dest[1], roslog=False)
+                except Exception as e:
+                    print(e)
+        elif url.toString().startswith('show-roslog://'):
+            if self.currentMaster is not None:
+                try:
+                    dest = url.toString().replace('show-roslog://', '').split('@')
+                    self.currentMaster.show_log(dest[0], dest[1], roslog=True)
+                except Exception as e:
+                    print(e)
         elif url.toString().startswith('back://'):
             if self._description_history:
                 # show last discription on click on back
@@ -2245,7 +2376,7 @@ class MainWindow(QMainWindow):
                 master.update_system_diagnostics(data)
                 self.master_model.update_master_diagnostic(nm.nameres().mastername(muri), data)
         except Exception as err:
-            rospy.logwarn('Error while process diagnostic messages: %s' % utf8(err))
+            rospy.logwarn('Error while process system diagnostic messages: %s' % utf8(err))
 
     def _callback_diagnostics(self, data, grpc_url=''):
         try:
@@ -2253,6 +2384,15 @@ class MainWindow(QMainWindow):
                 self.diagnostics_signal.emit(diagnostic)
         except Exception as err:
             rospy.logwarn('Error while process diagnostic messages: %s' % utf8(err))
+
+    def _callback_username(self, username, grpc_url=''):
+        try:
+            muri = nmdurl.masteruri(grpc_url)
+            master = self.getMaster(muri, create_new=False)
+            if master:
+                master.daemon_user = username
+        except Exception as err:
+            rospy.logwarn('Error while process username from daemon: %s' % utf8(err))
 
     def sysmon_active_update(self, masteruri):
         master = self.getMaster(masteruri, create_new=False)
@@ -2295,6 +2435,27 @@ class MainWindow(QMainWindow):
                                     'Error while parse parameter',
                                     '%s' % utf8(err))
 
+    def _throttle_nmd_errrors(self, reason, url, error, delay=60):
+        now = time.time()
+        doprint = False
+        try:
+            key = (reason, url, error.details())
+        except Exception:
+            key = (reason, url, utf8(error))
+        if key not in self._nmd_last_errors.keys():
+            doprint = True
+        elif now - self._nmd_last_errors[key] > delay:
+            doprint = True
+        if doprint:
+            rospy.logwarn("Error while %s from %s: %s" % (reason, url, utf8(error)))
+            self._nmd_last_errors[key] = now
+        if now - self._ts_nmd_error_last_check > 120:
+            # clean old messages
+            self._ts_nmd_error_last_check = now
+            for key, ts in self._nmd_last_errors.items():
+                if now - ts > 240:
+                    del self._nmd_last_errors[key]
+
     def on_nmd_err(self, method, url, path, error):
         '''
         Handles the error messages from node_manager_daemon.
@@ -2311,7 +2472,7 @@ class MainWindow(QMainWindow):
         reason = method
         if method == '_get_nodes':
             reason = 'get launch configuration'
-        rospy.logwarn("Error while %s from %s: %s" % (reason, url, utf8(error)))
+        self._throttle_nmd_errrors(reason, url, error, 60)
         if hasattr(error, 'code'):
             if error.code() == grpc.StatusCode.UNIMPLEMENTED:
                 muri = nmdurl.masteruri(url)
