@@ -2,6 +2,19 @@
 Changelog for package fkie_master_sync
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.3.0 (2022-07-15)
+------------------
+* fixed param sync
+* fkie_master_sync: convert diagnostic value to string
+* fkie_master_sync: fix value error while prepare diagnostic report
+* fkie_master_sync: fixed debug output
+* fkie_master_sync: improved warnings for unsupported or wrong md5sum message types
+* fkie_master_sync: added names and topics of multimaster nodes to default ignore lists
+* fkie_master_sync: do not update publisher node if it is in filter lister
+* fkie_master_sync: added master_sync and master_discovery
+* fkie_master_sync: added diagnostics and master_sync topics to default ignore list
+* Contributors: Alexander Tiderko, Thomas Barz
+
 1.2.7 (2021-01-23)
 ------------------
 
@@ -18,10 +31,6 @@ Changelog for package fkie_master_sync
 * fkie_master_sync: fix problems after stop master_sync on remote hosts
 * updated diagnostic message for warnings in master_sync
 * Contributors: Alexander Tiderko
-
-1.2.1 (2020-07-22)
-------------------
-* fkie_multimaster: added conditions for python3 dependencies in package xml
 
 1.2.0 (2020-07-22)
 ------------------
