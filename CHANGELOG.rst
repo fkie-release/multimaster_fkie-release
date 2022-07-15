@@ -2,6 +2,9 @@
 Changelog for package fkie_multimaster_msgs
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.3.0 (2022-07-15)
+------------------
+
 1.2.7 (2021-01-23)
 ------------------
 * Fix install location for generated gRPC submodule
@@ -20,16 +23,6 @@ Changelog for package fkie_multimaster_msgs
 1.2.4 (2020-11-11)
 ------------------
 * use ${PYTHON_EXECUTABLE} instead of search by itself
-* Contributors: Alexander Tiderko
-
-1.2.2 (2020-07-27)
-------------------
-* changed exec dependecies to build
-* Contributors: Alexander Tiderko
-
-1.2.1 (2020-07-22)
-------------------
-* fkie_multimaster: added conditions for python3 dependencies in package xml
 * Contributors: Alexander Tiderko
 
 1.2.0 (2020-07-22)
