@@ -1,0 +1,12 @@
+Source: ros-noetic-fkie-multimaster-msgs
+Section: misc
+Priority: optional
+Maintainer: Alexander Tiderko <alexander.tiderko@gmail.com>
+Build-Depends: debhelper (>= 9.0.0), python3-grpc-tools, ros-noetic-catkin, ros-noetic-message-generation, ros-noetic-std-msgs
+Homepage: http://ros.org/wiki/multimaster_msgs_fkie
+Standards-Version: 3.9.2
+
+Package: ros-noetic-fkie-multimaster-msgs
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-noetic-message-runtime, ros-noetic-std-msgs
+Description: The messages required by multimaster packages.
